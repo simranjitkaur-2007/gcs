@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turkiye Rocket Vajra - GCS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Iceland&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --bg: #05080a;
+            --panel: rgba(15, 20, 25, 0.95);
+            --cyan: #7fd9e3;
+            --amber: #d7b46a;
+            --magenta: #d78aa6;
+            --border: 1px solid rgba(127, 217, 227, 0.18);
+            --glow: 0 0 10px rgba(127, 217, 227, 0.18);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: #e0e0e0;
+            font-family: 'Iceland', cursive;
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            height: 60px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            align-items: center;
+            padding: 0 20px;
+            background: #0a0c10;
+            border-bottom: var(--border);
+            flex-shrink: 0;
+        }
+        .port-info { display: flex; gap: 20px; font-size: 0.85rem; }
+        .p-in { color: var(--cyan); }
+        .p-out { color: var(--amber); }
+        .header-center { text-align: center; }
+        .team-id { font-size: 1.4rem; color: var(--cyan); letter-spacing: 2px; }
+        .timer { font-size: 1.1rem; color: #fff; }
+        .header-right {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .pill {
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(127, 217, 227, 0.25);
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+        .pill[data-state="on"] { color: #baf3ff; background: rgba(127, 217, 227, 0.08); }
+        .pill[data-state="off"] { color: rgba(255, 255, 255, 0.65); background: rgba(255, 255, 255, 0.04); }
+        .btn {
+            cursor: pointer;
+            border-radius: 10px;
+            border: 1px solid rgba(127, 217, 227, 0.25);
+            background: rgba(15, 20, 25, 0.7);
+            color: rgba(255, 255, 255, 0.85);
+            padding: 7px 10px;
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+        .btn:hover { background: rgba(127, 217, 227, 0.10); }
+        .btn-primary {
+            border-color: rgba(127, 217, 227, 0.35);
+            background: rgba(127, 217, 227, 0.12);
+            color: #dff9ff;
+        }
+        .team-id-input {
+            width: 260px;
+            max-width: 30vw;
+            padding: 7px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(127, 217, 227, 0.18);
+            background: rgba(0, 0, 0, 0.35);
+            color: rgba(255, 255, 255, 0.88);
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .team-id-input::placeholder { color: rgba(255, 255, 255, 0.45); }
+
+        .dashboard {
+            display: grid;
+            grid-template-rows: 22vh 1fr 40px;
+            height: calc(100vh - 60px);
+            gap: 8px;
+            padding: 8px;
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            min-height: 0;
+        }
+        .chart-container {
+            background: var(--panel);
+            border: var(--border);
+            padding: 5px;
+            position: relative;
+        }
+
+        .mid-row {
+            display: grid;
+            grid-template-columns: 20% 10% 1fr 27%;
+            gap: 8px;
+            min-height: 0;
+        }
+
+        #map {
+            border: var(--border);
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+            border-radius: 10px;
+            filter: saturate(0.85) brightness(0.75) contrast(1.05);
+        }
+        .leaflet-container { background: #0b1014; }
+        #map .leaflet-control-zoom a { width: 26px; height: 26px; line-height: 26px; }
+        #map .leaflet-control-attribution { font-size: 10px; opacity: 0.75; }
+
+        .circles-stack {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .v-circle {
+            width: 74px; height: 74px;
+            border: 1px solid rgba(127, 217, 227, 0.55);
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(127, 217, 227, 0.04);
+            box-shadow: var(--glow);
+        }
+        .v-circle small { font-size: 0.6rem; color: var(--cyan); text-transform: uppercase; }
+        .v-circle b { font-size: 1.1rem; color: #fff; }
+
+        .rocket-display {
+            position: relative;
+            background: radial-gradient(circle, rgba(127, 217, 227, 0.06) 0%, transparent 75%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border: var(--border);
+            min-height: 0;
+        }
+        .rocket-img {
+            max-height: 82%;
+            max-width: 78%;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px rgba(127, 217, 227, 0.25));
+        }
+        .manual-sliders {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.55);
+            padding: 12px;
+            border-left: 2px solid var(--cyan);
+            font-size: 0.75rem;
+            max-width: 130px;
+        }
+        .manual-sliders input { width: 80px; accent-color: var(--cyan); margin: 4px 0; }
+        .manual-sliders br { line-height: 1.2; }
+
+        .right-panel {
+            display: grid;
+            grid-template-rows: 1.5fr 1fr 1fr 1fr;
+            gap: 8px;
+            min-height: 0;
+        }
+        .panel-box {
+            background: var(--panel);
+            border: var(--border);
+            padding: 8px;
+            overflow: hidden;
+            font-size: 0.8rem;
+        }
+        .panel-title {
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+        }
+        .kv {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 4px 10px;
+            margin-top: 6px;
+            color: rgba(210, 220, 230, 0.9);
+        }
+        .kv .k { color: rgba(127, 217, 227, 0.9); }
+        .kv .v { color: rgba(255, 255, 255, 0.9); font-variant-numeric: tabular-nums; text-align: right; }
+        .kv .v.bad { color: rgba(255, 255, 255, 0.65); }
+        .console-text {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.7rem;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        footer {
+            height: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            background: #0a0c10;
+            border-top: var(--border);
+            color: var(--cyan);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="port-info">
+        <div class="p-in">PORT FCC IN: COM3 @ 115200</div>
+        <div class="p-in">PORT FCC IN: COM3 @ 115200</div>
+        <div class="p-out">PORT RGS OUT: COM4 @ 19200</div>
+    </div>
+    <div class="header-center">
+        <div class="team-id" id="team-id-header">VAJRA ROCKETRY - TEAM ID 2026-IN-SPACe-CAN-7USAT-XXX</div>
+        <div class="timer" id="mission-clock">00:00:00</div>
+    </div>
+    <div class="header-right">
+        <input class="team-id-input" id="team-id-input" value="2026-IN-SPACe-CAN-7USAT-XXX" aria-label="Team ID" />
+        <span class="pill" id="conn-pill" data-state="off">DISCONNECTED</span>
+        <button class="btn" id="btn-connect" type="button" data-state="off">Connect</button>
+        <button class="btn btn-primary" id="btn-save" type="button">Save Telemetry</button>
+    </div>
+</header>
+
+<div class="dashboard">
+    <div class="top-row">
+        <div class="chart-container"><canvas id="altChart"></canvas></div>
+        <div class="chart-container"><canvas id="gyroChart"></canvas></div>
+        <div class="chart-container"><canvas id="accChart"></canvas></div>
+    </div>
+
+    <div class="mid-row">
+        <div id="map"></div>
+        
+        <div class="circles-stack">
+            <div class="v-circle"><small>Altitude</small><b id="val-alt">0</b></div>
+            <div class="v-circle"><small>Pressure</small><b id="val-pres">101.3</b></div>
+            <div class="v-circle"><small>Temp</small><b id="val-temp">24.5</b></div>
+            <div class="v-circle"><small>Velocity</small><b id="val-vel">0.0</b></div>
+        </div>
+
+        <div class="rocket-display">
+            <img class="rocket-img" src="https://i.postimg.cc/3N8V7tW6/Whats-App-Image-2026-03-17-at-19-40-06-(3).jpg" alt="Rocket">
+            
+            <div class="manual-sliders">
+                ACCEL X <br> <input type="range" min="0" max="100"> <br>
+                ACCEL Y <br> <input type="range" min="0" max="100"> <br>
+                GYRO Z <br> <input type="range" min="0" max="100">
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="panel-box" style="background:#000; color:#444; display:flex; align-items:center; justify-content:center;">
+                LIVE VIDEO STREAM [OFFLINE]
+            </div>
+            <div class="panel-box">
+                <div class="panel-title">MANDATORY TELEMETRY (SI)</div>
+                <div class="kv" aria-label="Mandatory telemetry fields">
+                    <div class="k">Packet #</div><div class="v" id="val-pkt">0</div>
+                    <div class="k">Software state</div><div class="v" id="val-state">BOOT</div>
+                    <div class="k">CRC</div><div class="v" id="val-crc">0x----</div>
+                    <div class="k">Packet rate</div><div class="v" id="val-rate">0 Hz</div>
+                    <div class="k">Data rate</div><div class="v" id="val-datarate">0 B/s</div>
+                    <div class="k">Altitude (m)</div><div class="v" id="val-alt2">0.0</div>
+                    <div class="k">Pressure (Pa)</div><div class="v" id="val-pres2">101325</div>
+                    <div class="k">Temp (°C)</div><div class="v" id="val-temp2">0.0</div>
+                    <div class="k">Voltage (V)</div><div class="v" id="val-volt">0.00</div>
+                    <div class="k">GNSS time (s)</div><div class="v" id="val-gnss-time">0</div>
+                    <div class="k">Lat (deg)</div><div class="v" id="val-lat">0.0000</div>
+                    <div class="k">Lon (deg)</div><div class="v" id="val-lon">0.0000</div>
+                    <div class="k">GNSS alt (m)</div><div class="v" id="val-gnss-alt">0.0</div>
+                    <div class="k">GNSS sats</div><div class="v" id="val-sats">0</div>
+                    <div class="k">Accel (m/s²)</div><div class="v" id="val-acc">0.0,0.0,0.0</div>
+                    <div class="k">Gyro (deg/s)</div><div class="v" id="val-gyro">0.0,0.0,0.0</div>
+                </div>
+            </div>
+            <div class="panel-box" style="font-size:0.7rem; color:#888;">
+                RAW TELEMETRY (CSV/ASCII): <br> <span id="raw-stream">AWAITING PACKET...</span>
+            </div>
+            <div class="panel-box console-text" id="packet-console">
+                > System Boot... <br>
+                > COM3 Connected...
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div>ROCKET PORT: <span style="color:lawngreen">ACTIVE</span></div>
+        <div>TX PORT: <span style="color:lawngreen">TRANSMITTING</span></div>
+    </footer>
+</div>
+
+<script src="./js/app.js"></script>
+
+</body>
+</html>
